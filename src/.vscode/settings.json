@@ -1,0 +1,12 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/shlies/camera_ws/install/camera/lib/python3.12/site-packages",
+        "/home/shlies/anaconda3/envs/camera_env/lib/python3.8/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/shlies/camera_ws/install/camera/lib/python3.12/site-packages",
+        "/home/shlies/anaconda3/envs/camera_env/lib/python3.8/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ]
+}
