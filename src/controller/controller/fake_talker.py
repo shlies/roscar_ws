@@ -25,3 +25,6 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+//[{'class': 'A', 'confidence': 0.8883844017982483, 'coordinates': {'center': [249, 213], 'pixel_to_camera': [-0.0, -0.0, 0.0], 'calculated_3d': [-44.637304364675, -18.9066722459125, 335.1136034747884]}},
+   {'class': 'A', 'confidence': 0.8883844017982483, 'coordinates': {'center': [249, 213], 'pixel_to_camera': [-0.0, -0.0, 0.0], 'calculated_3d': [-44.637304364675, -18.9066722459125, 335.1136034747884]}}]
