@@ -10,7 +10,7 @@ def float_to_bytes(float_num):
     scaled_int = int(float_num * 100)
     
     # 将整数分解为两个字节（大端字节序）
-    byte1 = (scaled_int >> 8) & 0xFF
+    byte1 = (scaled_int >> 8)
     byte2 = scaled_int & 0xFF
 
     return byte1, byte2

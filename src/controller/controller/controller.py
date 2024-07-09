@@ -37,7 +37,7 @@ class CoordinateListener(Node):
         super().__init__('coordinate_listener')
         self.subscription = self.create_subscription(
             String,
-            'coordinate_topic',
+            'socket_data',
             self.listener_callback,
             10)
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
@@ -48,16 +48,23 @@ class CoordinateListener(Node):
 
     def listener_callback(self, data):
         self.process_coordinates(data.data)
-
+        #self.get_logger().info(f"{data.data}")
     def process_coordinates(self, data):
         coordinates_dict = json.loads(data)
 
         filtered_coordinates = []
-
-        for i, (key, value) in enumerate(coordinates_dict.items()):
-            coordinate = np.array([value[0], value[1], value[2]])  # 提取xyz平面坐标
+        self.get_logger().info(f"{coordinates_dict}")
+        i=0
+        for raw in coordinates_dict:
+            coordinate=raw['coordinates']['calculated_3d']
+            #self.get_logger().info(f"{coordinate}")
             filtered_coord = self.iir_filters[i].apply(coordinate)
-            filtered_coordinates.append((key, filtered_coord))
+            filtered_coordinates.append((raw['class'], filtered_coord))
+            i+=1
+        # for i, (key, value) in enumerate(coordinates_dict.items()):
+        #     coordinate = np.array([value[0], value[1], value[2]])  # 提取xyz平面坐标
+        #     filtered_coord = self.iir_filters[i].apply(coordinate)
+        #     filtered_coordinates.append((key, filtered_coord))
 
         distances = []
         for coord in filtered_coordinates:
@@ -68,7 +75,7 @@ class CoordinateListener(Node):
         closest_target = filtered_coordinates[closest_target_idx]
 
         distance_to_target = distances[closest_target_idx]
-
+        #self.get_logger().info(f"nearest: {closest_target_idx},distance_to_target{distance_to_target}")
         if distance_to_target <= 0.2:  # 20 cm
             self.reached_target = True
             filtered_target = json.dumps({
