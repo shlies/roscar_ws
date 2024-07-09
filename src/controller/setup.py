@@ -31,8 +31,7 @@ setup(
     entry_points={
         'console_scripts': [
             'arm_node = controller.arm:main',
-            'controller_node = controller.controller:main',
-            'fake_talker_node = controller.fake_talker:main',
+            'controller_node = controller.controller:main'
         ],
     },
 )
