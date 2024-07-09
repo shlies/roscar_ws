@@ -2,35 +2,30 @@ import rclpy  # ROS 2的Python接口
 from rclpy.node import Node  # ROS 2的节点类
 from std_msgs.msg import String, Float32MultiArray  # ROS标准消息类型
 import json  # 用于解析和生成JSON字符串
-import numpy as np  # 用于数值计算的库
-import scipy.signal as signal  # 用于信号处理的库
+import math
 
-class IIRFilter:
-    def __init__(self, b, a):
-        self.b = b
-        self.a = a
-        self.zi = np.zeros(max(len(a), len(b)) - 1)
-
-    def apply(self, data):
-        data_filtered, self.zi = signal.lfilter(self.b, self.a, data, zi=self.zi)
-        return data_filtered
-
-class PIDController:
-    def __init__(self, Kp, Ki, Kd, max_integral=1.0):
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        self.max_integral = max_integral
-        self.prev_error = 0.0
-        self.integral = 0.0
-
-    def compute(self, error, dt):
-        self.integral += error * dt
-        self.integral = max(min(self.integral, self.max_integral), -self.max_integral)
-        derivative = (error - self.prev_error) / dt
-        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
-        self.prev_error = error
-        return output
+class Target:
+    def __init__(self,position,confidence):
+        self.position=position
+        self.filted_position=position
+        self.confidence=confidence
+        self.continual_miss=0
+        self.updated_flag=1
+        self.preference=0.0
+        self.aimed=False
+        self.class_name=''
+    def update(self,position,confidence):
+        self.position=position
+        self.confidence=confidence
+        self.updated_flag=1
+        self.filted_position[0]=0.5*self.filted_position[0]+0.5*position[0]
+        self.filted_position[1]=0.5*self.filted_position[1]+0.5*position[1]
+        distance=math.sqrt(self.filted_position[0]**2+self.filted_position[1]**2)
+        self.preference=2000.0/distance+confidence-0.2*self.continual_miss
+        if self.aimed:
+            self.preference=100
+            if self.continual_miss>=5:
+                self.preference=0
 
 class CoordinateListener(Node):
     def __init__(self):
@@ -41,92 +36,53 @@ class CoordinateListener(Node):
             self.listener_callback,
             10)
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
-        self.publisher_coordinate = self.create_publisher(String, 'arm', 10)
-
-        fs = 1.0
-        fc = 0.1
-        w = fc / (fs / 2)
-        b, a = signal.butter(4, w, 'low')
-        self.iir_filters = [IIRFilter(b, a) for _ in range(10)]
-
-        self.pid_y = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_z = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_angular = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-
-        self.last_time = self.get_clock().now().nanoseconds / 1e9
-        self.reached_target = False
+        self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
+        self.targets=[]
+        self.current_target=Target([0,0],0)
+        self.state=False
 
     def listener_callback(self, data):
         self.process_coordinates(data.data)
-        #self.get_logger().info(f"{data.data}")
     def process_coordinates(self, data):
         coordinates_dict = json.loads(data)
-        filtered_coordinates = []
-        #self.get_logger().info(f"{coordinates_dict}")
-        i=0
+        #添加坐标
         for raw in coordinates_dict:
-            coordinate=raw['coordinates']['calculated_3d']
-            #self.get_logger().info(f"{coordinate}")
-            filtered_coord = self.iir_filters[i].apply(coordinate)
-            filtered_coordinates.append((raw['class'], filtered_coord))
-            i+=1
-        # for i, (key, value) in enumerate(coordinates_dict.items()):
-        #     coordinate = np.array([value[0], value[1], value[2]])  # 提取xyz平面坐标
-        #     filtered_coord = self.iir_filters[i].apply(coordinate)
-        #     filtered_coordinates.append((key, filtered_coord))
-
-        distances = []
-        for coord in filtered_coordinates:
-            dist = np.linalg.norm(coord[1])  # 计算欧几里得范数
-            distances.append(dist)
-
-        closest_target_idx = np.argmin(distances)
-        closest_target = filtered_coordinates[closest_target_idx]
-
-        distance_to_target = distances[closest_target_idx]
-        #self.get_logger().info(f"nearest: {closest_target_idx},distance_to_target{distance_to_target}")
-        if distance_to_target <= 0.2:  # 20 cm
-            self.reached_target = True
-            filtered_target = json.dumps({
-                "x": closest_target[1][0],  # 输出包含x坐标
-                "y": closest_target[1][1],
-                "z": closest_target[1][2],
-                "t": 3.14
-            })
-            self.publisher_coordinate.publish(String(data=filtered_target))
-            self.plan_and_publish_velocity(closest_target[1], align_only=True)
+            distance_min=1000
+            index_min=0
+            for index, target in enumerate(self.targets):
+                x=raw['coordinates']['calculated_3d'][0]
+                z=raw['coordinates']['calculated_3d'][2]
+                distance=math.sqrt((x-target.position[0])**2+(z-target.position[1])**2)
+                if distance<distance_min:
+                    distance_min=distance
+                    index_min=index
+            if distance_min<50:
+                self.targets[index_min].update([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][2]],raw['confidence'])
+            else:
+                self.targets.append(Target([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][2]],raw['confidence']))
+        #检测并删除过时坐标
+        for target in self.targets:
+            if target.updated_flag==0:
+                target.continual_miss+=1
+                if target.continual_miss>10:
+                    self.targets.remove(target)
+            else:
+                target.updated_flag=0
+                target.continual_miss=0
+        #确定当前追踪目标
+        index_target=0
+        min_preference=0
+        if self.targets is not None:
+            for index, target in enumerate(self.targets):
+                if target.preference>min_preference:
+                    index_target=index
+                    min_preference=target.preference
+            self.targets[index_target].aimed=True
+            self.current_target=self.targets[index_target]
         else:
-            self.reached_target = False
-            self.publisher_coordinate.publish(String(data=json.dumps({"x": 0, "y": 0, "z": 0})))
-            self.plan_and_publish_velocity(closest_target[1])
-
-    def plan_and_publish_velocity(self, target_coordinate, align_only=False):
-        current_position = self.get_current_position()
-        error = target_coordinate[1:] - current_position  # 仅考虑y和z坐标
-
-        current_time = self.get_clock().now().nanoseconds / 1e9
-        dt = current_time - self.last_time
-        self.last_time = current_time
-
-        if align_only:
-            target_angle = np.arctan2(error[1], error[0])
-            angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [0.0, 0.0, angular_velocity]
-        else:
-            y_velocity = self.pid_y.compute(error[0], dt)
-            z_velocity = self.pid_z.compute(error[1], dt)
-            target_angle = np.arctan2(error[1], error[0])
-            angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [0.0, y_velocity, z_velocity, angular_velocity]
-
-        self.publish_velocity(velocity)
-
-    def get_current_position(self):
-        return np.array([0, 0])  # 仅考虑y和z坐标
-
-    def publish_velocity(self, velocity):
-        vel_msg = Float32MultiArray(data=velocity)
-        self.publisher_velocity.publish(vel_msg)
+            self.current_target=Target([10,1],0)
+        self.get_logger().info('Aimed target: %s' % self.current_target.position)
+        
 
 def main(args=None):
     rclpy.init(args=args)
