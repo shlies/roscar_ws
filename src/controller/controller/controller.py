@@ -41,7 +41,7 @@ class CoordinateListener(Node):
             self.listener_callback,
             10)
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
-        self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
+        self.publisher_coordinate = self.create_publisher(String, 'arm', 10)
 
         fs = 1.0
         fc = 0.1
@@ -62,7 +62,7 @@ class CoordinateListener(Node):
     def process_coordinates(self, data):
         coordinates_dict = json.loads(data)
         filtered_coordinates = []
-        self.get_logger().info(f"{coordinates_dict}")
+        #self.get_logger().info(f"{coordinates_dict}")
         i=0
         for raw in coordinates_dict:
             coordinate=raw['coordinates']['calculated_3d']
@@ -90,7 +90,8 @@ class CoordinateListener(Node):
             filtered_target = json.dumps({
                 "x": closest_target[1][0],  # 输出包含x坐标
                 "y": closest_target[1][1],
-                "z": closest_target[1][2]
+                "z": closest_target[1][2],
+                "t": 3.14
             })
             self.publisher_coordinate.publish(String(data=filtered_target))
             self.plan_and_publish_velocity(closest_target[1], align_only=True)

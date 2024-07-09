@@ -5,7 +5,7 @@ from std_msgs.msg import String
 class FakeTalker(Node):
     def __init__(self):
         super().__init__('fake_talker')
-        self.publisher = self.create_publisher(String, 'coordinate_topic', 10)
+        self.publisher = self.create_publisher(String, 'coordinate', 10)
         timer_period = 1.0  # 发布频率为1秒
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
@@ -26,5 +26,3 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 
-//[{'class': 'A', 'confidence': 0.8883844017982483, 'coordinates': {'center': [249, 213], 'pixel_to_camera': [-0.0, -0.0, 0.0], 'calculated_3d': [-44.637304364675, -18.9066722459125, 335.1136034747884]}},
-   {'class': 'A', 'confidence': 0.8883844017982483, 'coordinates': {'center': [249, 213], 'pixel_to_camera': [-0.0, -0.0, 0.0], 'calculated_3d': [-44.637304364675, -18.9066722459125, 335.1136034747884]}}]

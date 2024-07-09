@@ -3,18 +3,9 @@ from rclpy.node import Node  # ROS 2的节点类
 from std_msgs.msg import String, Float32MultiArray  # ROS标准消息类型
 import json  # 用于解析和生成JSON字符串
 import numpy as np  # 用于数值计算的库
-import scipy.signal as signal  # 用于信号处理的库
+import time
 
-class IIRFilter:
-    def __init__(self, b, a):
-        self.b = b
-        self.a = a
-        self.zi = np.zeros(max(len(a), len(b)) - 1)
-
-    def apply(self, data):
-        data_filtered, self.zi = signal.lfilter(self.b, self.a, data, zi=self.zi)
-        return data_filtered
-
+ox=oy=oz=0 #机械臂坐标原点偏移
 class PIDController:
     def __init__(self, Kp, Ki, Kd, max_integral=1.0):
         self.Kp = Kp
@@ -37,84 +28,82 @@ class CoordinateListener(Node):
         super().__init__('coordinate_listener')
         self.subscription = self.create_subscription(
             String,
-            'coordinate_topic',
+            'coordinate',
             self.listener_callback,
             10)
-        self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
-        self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
-
-        fs = 1.0
-        fc = 0.1
-        w = fc / (fs / 2)
-        b, a = signal.butter(4, w, 'low')
-        self.iir_filters = [IIRFilter(b, a) for _ in range(10)]
+        self.publisher_velocity = self.create_publisher(Float32MultiArray, 'robot_running', 10)
+        self.publisher_arm = self.create_publisher(String, 'arm', 10)
 
         self.pid_y = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
         self.pid_z = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
         self.pid_angular = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
 
         self.last_time = self.get_clock().now().nanoseconds / 1e9
-        self.reached_target = False
 
-    def listener_callback(self, data):
-        self.process_coordinates(data.data)
+    def listener_callback(self, data):      
+        coordinates_dict = json.loads(data.data)
+      
+        x=coordinates_dict['x'];y=coordinates_dict['y'];z=coordinates_dict['z']
 
-    def process_coordinates(self, data):
-        coordinates_dict = json.loads(data)
-        filtered_coordinates = []
+        distance = (x**2+y**2+z**2)**0.5
 
-        for i, (key, value) in enumerate(coordinates_dict.items()):
-            coordinate = np.array([value[0], value[1], value[2]])  # 提取xyz平面坐标
-            filtered_coord = self.iir_filters[i].apply(coordinate)
-            filtered_coordinates.append((key, filtered_coord))
-
-        distances = []
-        for coord in filtered_coordinates:
-            dist = np.linalg.norm(coord[1])  # 计算欧几里得范数
-            distances.append(dist)
-
-        closest_target_idx = np.argmin(distances)
-        closest_target = filtered_coordinates[closest_target_idx]
-
-        distance_to_target = distances[closest_target_idx]
-
-        if distance_to_target <= 0.2:  # 20 cm
-            self.reached_target = True
-            filtered_target = json.dumps({
-                "x": closest_target[1][0],  # 输出包含x坐标
-                "y": closest_target[1][1],
-                "z": closest_target[1][2]
+        if distance <= 0.4:  #40  cm
+            start_time=time.time
+            t = time.time -start_time
+            arget = json.dumps({
+                "x": x+ox,  
+                "y": y+oy,
+                "z": z+oz,
             })
-            self.publisher_coordinate.publish(String(data=filtered_target))
-            self.plan_and_publish_velocity(closest_target[1], align_only=True)
+            if(t<=15):
+                self.arm_move([x,y,z])
+                self.plan_and_publish_velocity([x,y,z], align_only=True)
+            else:
+                self.arm_move([x,y,z],True)
         else:
-            self.reached_target = False
-            self.publisher_coordinate.publish(String(data=json.dumps({"x": 0, "y": 0, "z": 0})))
-            self.plan_and_publish_velocity(closest_target[1])
+            self.arm_move([0.0,0.0,0.0])
+            self.plan_and_publish_velocity([x,y,z])
 
+    def arm_move(self,target_coordinate,fetch=False):
+        arget = json.dumps({
+                "x": target_coordinate[0]+ox,  
+                "y": target_coordinate[1]+oy,
+                "z": target_coordinate[2]+oz,
+                "t":3.14
+            })
+        if(fetch==False):
+           self.publisher_arm.publish(String(data=arget))
+        
+        if(fetch):
+           arget = json.dumps({
+                "x": target_coordinate[0]+ox,  
+                "y": target_coordinate[1]+oy,
+                "z": target_coordinate[2]+oz,
+                "t":0
+            })
+           self.publisher_arm.publish(String(data=arget))
+        
+    
+        
     def plan_and_publish_velocity(self, target_coordinate, align_only=False):
-        current_position = self.get_current_position()
-        error = target_coordinate[1:] - current_position  # 仅考虑y和z坐标
+        error = target_coordinate# 仅考虑x和z坐标
 
         current_time = self.get_clock().now().nanoseconds / 1e9
         dt = current_time - self.last_time
         self.last_time = current_time
 
         if align_only:
-            target_angle = np.arctan2(error[1], error[0])
+            target_angle = np.arctan2(error[0], error[2]) #x坐标和z坐标求角
             angular_velocity = self.pid_angular.compute(target_angle, dt)
             velocity = [0.0, 0.0, angular_velocity]
         else:
-            y_velocity = self.pid_y.compute(error[0], dt)
+            x_velocity = self.pid_x.compute(error[0], dt)
             z_velocity = self.pid_z.compute(error[1], dt)
             target_angle = np.arctan2(error[1], error[0])
             angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [0.0, y_velocity, z_velocity, angular_velocity]
+            velocity = [x_velocity,z_velocity, angular_velocity]
 
         self.publish_velocity(velocity)
-
-    def get_current_position(self):
-        return np.array([0, 0])  # 仅考虑y和z坐标
 
     def publish_velocity(self, velocity):
         vel_msg = Float32MultiArray(data=velocity)
