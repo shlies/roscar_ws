@@ -42,25 +42,16 @@ class CoordinateListener(Node):
             10)
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
         self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
-
-        fs = 1.0
-        fc = 0.1
-        w = fc / (fs / 2)
-        b, a = signal.butter(4, w, 'low')
-        self.iir_filters = [IIRFilter(b, a) for _ in range(10)]
-
-        self.pid_y = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_z = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_angular = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-
-        self.last_time = self.get_clock().now().nanoseconds / 1e9
-        self.reached_target = False
+        self.filters=[]
+        self.positions=[]
+        self.state=False
 
     def listener_callback(self, data):
         self.process_coordinates(data.data)
 
     def process_coordinates(self, data):
         coordinates_dict = json.loads(data)
+
         filtered_coordinates = []
 
         for i, (key, value) in enumerate(coordinates_dict.items()):
