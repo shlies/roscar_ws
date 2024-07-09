@@ -2,87 +2,114 @@ import rclpy  # ROS 2的Python接口
 from rclpy.node import Node  # ROS 2的节点类
 from std_msgs.msg import String, Float32MultiArray  # ROS标准消息类型
 import json  # 用于解析和生成JSON字符串
-import math
+import numpy as np  # 用于数值计算的库
+import time
 
-class Target:
-    def __init__(self,position,confidence):
-        self.position=position
-        self.filted_position=position
-        self.confidence=confidence
-        self.continual_miss=0
-        self.updated_flag=1
-        self.preference=0.0
-        self.aimed=False
-        self.class_name=''
-    def update(self,position,confidence):
-        self.position=position
-        self.confidence=confidence
-        self.updated_flag=1
-        self.filted_position[0]=0.5*self.filted_position[0]+0.5*position[0]
-        self.filted_position[1]=0.5*self.filted_position[1]+0.5*position[1]
-        distance=math.sqrt(self.filted_position[0]**2+self.filted_position[1]**2)
-        self.preference=2000.0/distance+confidence-0.2*self.continual_miss
-        if self.aimed:
-            self.preference=100
-            if self.continual_miss>=5:
-                self.preference=0
+ox=oy=oz=0 #机械臂坐标原点偏移
+class PIDController:
+    def __init__(self, Kp, Ki, Kd, max_integral=1.0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.max_integral = max_integral
+        self.prev_error = 0.0
+        self.integral = 0.0
+
+    def compute(self, error, dt):
+        self.integral += error * dt
+        self.integral = max(min(self.integral, self.max_integral), -self.max_integral)
+        derivative = (error - self.prev_error) / dt
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+        self.prev_error = error
+        return output
 
 class CoordinateListener(Node):
     def __init__(self):
         super().__init__('coordinate_listener')
         self.subscription = self.create_subscription(
             String,
-            'socket_data',
+            'coordinate',
             self.listener_callback,
             10)
-        self.publisher_velocity = self.create_publisher(Float32MultiArray, 'velocity_topic', 10)
-        self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
-        self.targets=[]
-        self.current_target=Target([0,0],0)
-        self.state=False
+        self.publisher_velocity = self.create_publisher(Float32MultiArray, 'robot_running', 10)
+        self.publisher_arm = self.create_publisher(String, 'arm', 10)
 
-    def listener_callback(self, data):
-        self.process_coordinates(data.data)
-    def process_coordinates(self, data):
-        coordinates_dict = json.loads(data)
-        #添加坐标
-        for raw in coordinates_dict:
-            distance_min=1000
-            index_min=0
-            for index, target in enumerate(self.targets):
-                x=raw['coordinates']['calculated_3d'][0]
-                z=raw['coordinates']['calculated_3d'][2]
-                distance=math.sqrt((x-target.position[0])**2+(z-target.position[1])**2)
-                if distance<distance_min:
-                    distance_min=distance
-                    index_min=index
-            if distance_min<50:
-                self.targets[index_min].update([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][2]],raw['confidence'])
+        self.pid_x = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
+        self.pid_z = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
+        self.pid_angular = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
+
+        self.last_time = self.get_clock().now().nanoseconds / 1e9
+
+    def listener_callback(self, data):      
+        coordinates_dict = json.loads(data.data)
+      
+        x=coordinates_dict['x'];y=coordinates_dict['y'];z=coordinates_dict['z']
+
+        distance = (x**2+y**2+z**2)**0.5
+        self.get_logger().info(f"dist: {distance}")
+        if distance <= 350:  #35  cm
+            start_time=time.time()
+            t = time.time() - start_time
+            arget = json.dumps({
+                "x": x+ox,  
+                "y": y+oy,
+                "z": z+oz,
+            })
+            if(t<=15):
+                self.arm_move([x,y,z])
+                self.plan_and_publish_velocity([x,y,z], True)
             else:
-                self.targets.append(Target([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][2]],raw['confidence']))
-        #检测并删除过时坐标
-        for target in self.targets:
-            if target.updated_flag==0:
-                target.continual_miss+=1
-                if target.continual_miss>10:
-                    self.targets.remove(target)
-            else:
-                target.updated_flag=0
-                target.continual_miss=0
-        #确定当前追踪目标
-        index_target=0
-        min_preference=0
-        if self.targets is not None:
-            for index, target in enumerate(self.targets):
-                if target.preference>min_preference:
-                    index_target=index
-                    min_preference=target.preference
-            self.targets[index_target].aimed=True
-            self.current_target=self.targets[index_target]
+                self.arm_move([x,y,z],True)
         else:
-            self.current_target=Target([10,1],0)
-        self.get_logger().info('Aimed target: %s' % self.current_target.position)
+            self.arm_move([0.0,0.0,0.0])
+            self.plan_and_publish_velocity([x,y,z])
+
+    def arm_move(self,target_coordinate,fetch=False):
+        arget = json.dumps({
+                "x": target_coordinate[0]+ox,  
+                "y": target_coordinate[1]+oy,
+                "z": target_coordinate[2]+oz,
+                "t":3.14
+            })
+        if(fetch==False):
+           self.publisher_arm.publish(String(data=arget))
         
+        if(fetch):
+           arget = json.dumps({
+                "x": target_coordinate[0]+ox,  
+                "y": target_coordinate[1]+oy,
+                "z": target_coordinate[2]+oz,
+                "t":0
+            })
+           self.publisher_arm.publish(String(data=arget))
+        
+    
+        
+    def plan_and_publish_velocity(self, target_coordinate, align_only=False):
+        error = target_coordinate# 仅考虑x和z坐标
+
+        current_time = self.get_clock().now().nanoseconds / 1e9
+        dt = current_time - self.last_time
+        self.last_time = current_time
+
+        if align_only:
+            self.get_logger().info(f"angle_only")
+            target_angle = np.arctan2(error[0], error[2]) #x坐标和z坐标求角
+            angular_velocity = self.pid_angular.compute(target_angle, dt)
+            velocity = [0.0, 0.0, angular_velocity]
+        else:
+            self.get_logger().info(f"NOT angle_only")
+            x_velocity = self.pid_x.compute(error[0], dt)
+            z_velocity = self.pid_z.compute(error[1], dt)
+            target_angle = np.arctan2(error[1], error[0])
+            angular_velocity = self.pid_angular.compute(target_angle, dt)
+            velocity = [x_velocity/100,z_velocity/100, angular_velocity]
+
+        self.publish_velocity(velocity)
+
+    def publish_velocity(self, velocity):
+        vel_msg = Float32MultiArray(data=velocity)
+        self.publisher_velocity.publish(vel_msg)
 
 def main(args=None):
     rclpy.init(args=args)

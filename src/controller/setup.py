@@ -30,8 +30,8 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            'arm_node = controller.arm:main',
-            'controller_node = controller.controller:main'
+            'controller = controller.controller:main',
+            'target_filter = controller.target_filter:main'
         ],
     },
 )
