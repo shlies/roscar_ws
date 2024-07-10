@@ -1,33 +1,26 @@
-from setuptools import setup
+from setuptools import find_packages, setup
+import os
+from glob import glob
 
 package_name = 'controller'
 
 setup(
     name=package_name,
     version='0.0.1',
-    packages=[package_name],
-    install_requires=[
-        'setuptools',
-        'numpy',
-        'scipy',
-        'rclpy',
-        'std_msgs',
+    packages=find_packages(exclude=['test']),
+    data_files=[
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
+        ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
     ],
+    install_requires=['setuptools'],
     zip_safe=True,
-    author='Your Name',
-    author_email='your.email@example.com',
-    maintainer='Maintainer Name',
-    maintainer_email='maintainer.email@example.com',
-    keywords=['ROS', 'ROS2', 'robotics'],
-    classifiers=[
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3',
-        'Topic :: Software Development',
-    ],
-    description='ROS 2 package for controlling a robot arm and simulating coordinates',
-    license='MIT',
+    maintainer='LRuca',
+    maintainer_email='LRuca@github.com',
+    description='TODO: Package description',
+    license='Apache-2.0',
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'controller = controller.controller:main',

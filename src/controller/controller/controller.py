@@ -34,9 +34,9 @@ class CoordinateListener(Node):
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'robot_running', 10)
         self.publisher_arm = self.create_publisher(String, 'arm', 10)
 
-        self.pid_x = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_z = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
-        self.pid_angular = PIDController(Kp=1.0, Ki=0.1, Kd=0.01)
+        self.pid_x = PIDController(Kp=0.01, Ki=0.0, Kd=0.0)
+        self.pid_z = PIDController(Kp=0.01, Ki=0.0, Kd=0.0)
+        self.pid_angular = PIDController(Kp=1.0, Ki=0.0, Kd=0.0)
 
         self.last_time = self.get_clock().now().nanoseconds / 1e9
 
@@ -103,7 +103,7 @@ class CoordinateListener(Node):
             z_velocity = self.pid_z.compute(error[1], dt)
             target_angle = np.arctan2(error[1], error[0])
             angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [x_velocity/100,z_velocity/100, angular_velocity]
+            velocity = [x_velocity,z_velocity, angular_velocity]
 
         self.publish_velocity(velocity)
 

@@ -18,8 +18,12 @@ def float_to_bytes(float_num):
 class SerialNode(Node):
     def __init__(self):
         super().__init__('uart_comm')
-        self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 设置串口参数
-        self.get_logger().info('Serial node started')
+        try:
+            self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 设置串口参数
+            self.get_logger().info('Serial node started')
+        except serial.serialutil.SerialException:
+            self.get_logger().info('Serial node failed to start')
+            exit()
 
         # 创建订阅者，订阅名为“robot_running”的话题
         self.subscription = self.create_subscription(
