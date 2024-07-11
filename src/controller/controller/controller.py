@@ -34,20 +34,18 @@ class CoordinateListener(Node):
         self.publisher_velocity = self.create_publisher(Float32MultiArray, 'robot_running', 10)
         self.publisher_arm = self.create_publisher(String, 'arm', 10)
 
-        # self.pid_x = PIDController(Kp=0.002, Ki=0.0, Kd=0.0)#0.03
-        # self.pid_z = PIDController(Kp=0.005, Ki=0.0, Kd=0.0)#0.03
-        self.pid_v = PIDController(Kp=0.004, Ki=0.0, Kd=0.0)#0.03
-        self.pid_angular = PIDController(Kp=0.0, Ki=0.0, Kd=0.0)
-
+        self.pid_v = PIDController(Kp=0.003, Ki=0.0, Kd=0.0)#0.03
+        self.pid_angular = PIDController(Kp=4.0, Ki=0.0, Kd=0.0)
         self.last_time = self.get_clock().now().nanoseconds / 1e9
+        self.dis_err=0
 
     def listener_callback(self, data):      
-        coordinates_dict = json.loads(data.data)
+        location = json.loads(data.data)
       
-        x=coordinates_dict['x'];y=coordinates_dict['y'];z=coordinates_dict['z']
+        x=location['x'];y=location['y'];z=location['z']
 
         self.distance = (x**2+y**2+z**2)**0.5
-        self.get_logger().info(f"dist: {self.distance}")
+        self.get_logger().info(f"{x},{y},{z} dist: {self.distance}")
         if 0:  #distance <= 250
             start_time=time.time()
             t = time.time() - start_time
@@ -63,7 +61,7 @@ class CoordinateListener(Node):
                 self.arm_move([x,y,z],True)
         else:
             self.arm_move([0.0,0.0,0.0])
-            self.plan_and_publish_velocity([x,y,z])
+            self.plan_and_publish_velocity([x,z])
 
     def arm_move(self,target_coordinate,fetch=False):
         arget = json.dumps({
@@ -86,26 +84,21 @@ class CoordinateListener(Node):
         
     
         
-    def plan_and_publish_velocity(self, target_coordinate, align_only=False):
-        error = target_coordinate# 仅考虑x和z坐标
-        dis=(target_coordinate[0]**2+target_coordinate[1]**2)**0.5
+    def plan_and_publish_velocity(self, target_location, align_only=False):
+        dis=(target_location[0]**2+target_location[1]**2)**0.5
+        target_angle = np.arctan2(target_location[0], target_location[1])
+        err=dis-300
         current_time = self.get_clock().now().nanoseconds / 1e9
         dt = current_time - self.last_time
         self.last_time = current_time
 
-        if align_only:
-            self.get_logger().info(f"angle_only x_err:{error[0]},z_err:{error[1]}")
-            target_angle = np.arctan2(error[1], error[0]) #x坐标和z坐标求角
-            angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [0.0, 0.0, angular_velocity]
-        else:
-            total_vel=self.pid_v.compute(dis-40,dt)
-            self.get_logger().info(f"NOT angle_only s_err:{dis-40},v={total_vel},{-total_vel*target_coordinate[0]/dis},{total_vel*target_coordinate[1]/dis}")
-            # x_velocity = -self.pid_x.compute(error[0], dt)
-            # z_velocity = self.pid_z.compute(error[1], dt)
-            target_angle = np.arctan2(target_coordinate[1], target_coordinate[0])
-            angular_velocity = self.pid_angular.compute(target_angle, dt)
-            velocity = [-total_vel*target_coordinate[0]/dis,total_vel*target_coordinate[1]/dis, angular_velocity]
+        vel=self.pid_v.compute(err,dt)
+        angular_vel = self.pid_angular.compute(target_angle, dt)
+        self.get_logger().info(f"NOT angle_only ,angle={target_angle}")
+        vx=vel*(target_location[0]/dis)
+        vz=vel*(target_location[1]/dis)
+        velocity = [vz,-vx, -angular_vel]
+        # velocity = [0,0, -angular_vel]
 
         self.publish_velocity(velocity)
 
