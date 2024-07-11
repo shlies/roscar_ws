@@ -21,7 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
         'uart_arm_comm = arm_comm.uart_arm_comm:main',
-        'uart_arm_comm_test = arm_comm.uart_arm_comm_test:main',
+        'uart_uart_arm_commarm_comm_test = arm_comm.uart_arm_comm_test:main',
         ],
     },
 )
