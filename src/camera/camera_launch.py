@@ -21,8 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'publish = camera.publisher:main',
-            'talker = camera.talker_demo:main',
-            'camera_launch = camera_launch:main'
+            'talker = camera.talker_demo:main'
         ],
     },
 )
