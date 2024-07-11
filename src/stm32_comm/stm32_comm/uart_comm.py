@@ -18,12 +18,8 @@ def float_to_bytes(float_num):
 class SerialNode(Node):
     def __init__(self):
         super().__init__('uart_comm')
-        try:
-            self.ser = serial.Serial('/dev/ttyUSB1', 115200, timeout=1)  # 设置串口参数
-            self.get_logger().info('Serial node started')
-        except serial.serialutil.SerialException:
-            self.get_logger().info('Serial node failed to start')
-            exit()
+
+        self.open_seraal()
 
         # 创建订阅者，订阅名为“robot_running”的话题
         self.subscription = self.create_subscription(
@@ -33,7 +29,17 @@ class SerialNode(Node):
             10
         )
 
+    def open_seraal(self):
+        try:
+            self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)  # 设置串口参数
+            self.get_logger().info('Serial0 started')
         
+        except serial.serialutil.SerialException:
+            try:
+                self.ser = serial.Serial('/dev/ttyUSB1', 115200, timeout=1)  # 设置串口参数
+                self.get_logger().info('Serial1 started')
+            except:
+                self.get_logger().info('Serial node failed to start')
 
     def listener_callback(self, msg):
         data = msg.data  
@@ -54,6 +60,7 @@ class SerialNode(Node):
             self.ser.write(byte_list)
         except:
             self.get_logger().error("Serial write failed")
+            self.open_seraal()
         # for message in byte_list:
         #     self.ser.write(message)                 # 发送一个两位数
         # self.received_data = []                     # 清空已发送的数据
