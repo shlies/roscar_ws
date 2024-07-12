@@ -37,7 +37,11 @@ class CoordinateListener(Node):
         self.pid_v = PIDController(Kp=0.003, Ki=0.0, Kd=0.0)#0.03
         self.pid_angular = PIDController(Kp=4.0, Ki=0.0, Kd=0.0)
         self.last_time = self.get_clock().now().nanoseconds / 1e9
-        self.dis_err=0
+        self.dis_err
+
+        self.in_fetch_time = False
+        self.fectch_start_time
+        self.fectchnow = False
 
     def listener_callback(self, data):      
         location = json.loads(data.data)
@@ -46,58 +50,72 @@ class CoordinateListener(Node):
 
         self.distance = (x**2+y**2+z**2)**0.5
         self.get_logger().info(f"{x},{y},{z} dist: {self.distance}")
-        if 0:  #distance <= 250
-            start_time=time.time()
-            t = time.time() - start_time
-            arget = json.dumps({
-                "x": x+ox,  
-                "y": y+oy,
-                "z": z+oz,
-            })
-            if(t<=15):
-                self.arm_move([x,y,z])
-                self.plan_and_publish_velocity([x,y,z], True)
-            else:
-                self.arm_move([x,y,z],True)
-        else:
-            self.arm_move([0.0,0.0,0.0])
-            self.plan_and_publish_velocity([x,z])
+        self.plan_and_publish_velocity([x,z])
+        # if 0:  #distance <= 250
+        #     start_time=time.time()
+        #     t = time.time() - start_time
+        #     arget = json.dumps({
+        #         "x": x+ox,  
+        #         "y": y+oy,
+        #         "z": z+oz,
+        #     })
+        #     if(t<=15):
+        #         self.arm_move([x,y,z])
+        #         self.plan_and_publish_velocity([x,y,z], True)
+        #     else:
+        #         self.arm_move([x,y,z],True)
+        # else:
+        #     self.arm_move([0.0,0.0,0.0])
+            
 
-    def arm_move(self,target_coordinate,fetch=False):
-        arget = json.dumps({
-                "x": target_coordinate[0]+ox,  
-                "y": target_coordinate[1]+oy,
-                "z": target_coordinate[2]+oz,
-                "t":3.14
-            })
-        if(fetch==False):
-           self.publisher_arm.publish(String(data=arget))
+    # def arm_move(self,target_coordinate,fetch=False):
+    #     arget = json.dumps({
+    #             "x": target_coordinate[0]+ox,  
+    #             "y": target_coordinate[1]+oy,
+    #             "z": target_coordinate[2]+oz,
+    #             "t":3.14
+    #         })
+    #     if(fetch==False):
+    #        self.publisher_arm.publish(String(data=arget))
         
-        if(fetch):
-           arget = json.dumps({
-                "x": target_coordinate[0]+ox,  
-                "y": target_coordinate[1]+oy,
-                "z": target_coordinate[2]+oz,
-                "t":0
-            })
-           self.publisher_arm.publish(String(data=arget))
+    #     if(fetch):
+    #        arget = json.dumps({
+    #             "x": target_coordinate[0]+ox,  
+    #             "y": target_coordinate[1]+oy,
+    #             "z": target_coordinate[2]+oz,
+    #             "t":0
+    #         })
+    #        self.publisher_arm.publish(String(data=arget))
+
+    def fectch(self):
+        if (self.dis_err <200):
+            if(not self.in_fectch_time):
+                self.fetch_start_time = time.time()
+                self.in_fetch_time = True
+            if(time.time()-self.fetch_start_time>5):
+                self.fectchnow = True
+        else:
+            self.in_fetch_time = False
+            self.fetch_start_time = time.time()
+
+            
         
     
         
-    def plan_and_publish_velocity(self, target_location, align_only=False):
+    def plan_and_publish_velocity(self, target_location, fetch=False):
         dis=(target_location[0]**2+target_location[1]**2)**0.5
         target_angle = np.arctan2(target_location[0], target_location[1])
-        err=dis-300
+        self.dis_err=dis-300
         current_time = self.get_clock().now().nanoseconds / 1e9
         dt = current_time - self.last_time
         self.last_time = current_time
 
-        vel=self.pid_v.compute(err,dt)
+        vel=self.pid_v.compute(self.dis_err,dt)
         angular_vel = self.pid_angular.compute(target_angle, dt)
         self.get_logger().info(f"NOT angle_only ,angle={target_angle}")
         vx=vel*(target_location[0]/dis)
         vz=vel*(target_location[1]/dis)
-        velocity = [vz,-vx, -angular_vel]
+        velocity = [vz,-vx, -angular_vel,self.fectchnow]
         # velocity = [0,0, -angular_vel]
 
         self.publish_velocity(velocity)
