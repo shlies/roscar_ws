@@ -50,12 +50,14 @@ class SerialNode(Node):
 
 
 
-        for number in self.received_data:
-            hex_byte1, hex_byte2 = float_to_bytes(number)
+        for index in range(3):
+            hex_byte1, hex_byte2 = float_to_bytes(self.received_data[index])
             byte_list.append(hex_byte1)
             byte_list.append(hex_byte2)
 
-            self.get_logger().info(f'Sent: {hex_byte1} and {hex_byte2}')
+        
+        byte_list.append(int(0x6A*self.received_data[3]))
+        self.get_logger().info(f'Sent: {byte_list}')
         try:
             self.ser.write(byte_list)
         except:

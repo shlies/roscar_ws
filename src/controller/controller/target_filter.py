@@ -5,7 +5,7 @@ import json  # 用于解析和生成JSON字符串
 import math
 
 class Target:
-    def __init__(self,position,confidence,class_name):
+    def __init__(self,position,confidence,class_name,target_type):
         self.position=position
         self.filted_position=position
         self.confidence=confidence
@@ -14,20 +14,19 @@ class Target:
         self.preference=0.0
         self.aimed=False
         self.class_name=class_name
-        self.type
-    def update(self,position,confidence):
+        self.type=target_type
+    def update(self,position,confidence,class_name):
         self.position=position
         self.confidence=confidence
         self.updated_flag=1
+        self.class_name=class_name
         self.filted_position[0]=0.5*self.filted_position[0]+0.5*position[0]
         self.filted_position[1]=0.5*self.filted_position[1]+0.5*position[1]
         self.filted_position[2]=0.5*self.filted_position[2]+0.5*position[2]
         distance=math.sqrt(self.filted_position[0]**2+self.filted_position[2]**2)
         self.preference=2000.0/distance+confidence-0.2*self.continual_miss
-        if self.aimed:
+        if self.aimed and self.continual_miss<5:
             self.preference=100
-            if self.continual_miss>=5:
-                self.preference=0
 
 class CoordinateListener(Node):
     def __init__(self):
@@ -38,16 +37,17 @@ class CoordinateListener(Node):
             self.listener_callback,
             10)
         self.publisher_coordinate = self.create_publisher(String, 'coordinate', 10)
-        self.subscription_fetch = self.create_subscription(
-            bool,
-            'infetch',
-            self.listener_callback_fetch,
-            10)
+        # self.subscription_fetch = self.create_subscription(
+        #     bool,
+        #     'infetch',
+        #     self.listener_callback_fetch,
+        #     10)
         self.targets=[]
-        self.current_target=Target([0,0,0],0,'can')
-        self.state=False
-        self.infetch
-        self.target_type=["can","destination"]
+        self.current_target=Target([0,0,0],0,'','')
+        self.current_destination=Target([0,0,0],0,'','')
+        # self.state=False
+        # self.infetch
+        # self.target_type=["can","destination"]
 
     def listener_callback(self, data):
         self.process_coordinates(data.data)
@@ -58,17 +58,21 @@ class CoordinateListener(Node):
         for raw in coordinates_dict:
             distance_min=1000
             index_min=0
+            target_type='can'
+            if(raw['class']=='d'):
+                target_type='destination'
+
             for index, target in enumerate(self.targets):
                 x=raw['coordinates']['calculated_3d'][0]
                 z=raw['coordinates']['calculated_3d'][2]
                 distance=math.sqrt((x-target.position[0])**2+(z-target.position[2])**2)
-                if distance<distance_min:
+                if distance<distance_min and target_type==target.type:
                     distance_min=distance
                     index_min=index
             if distance_min<50:
                 self.targets[index_min].update([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][1],raw['coordinates']['calculated_3d'][2]],raw['confidence'],raw['class'])
             else:
-                self.targets.append(Target([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][1],raw['coordinates']['calculated_3d'][2]],raw['confidence'],raw['class']) )
+                self.targets.append(Target([raw['coordinates']['calculated_3d'][0],raw['coordinates']['calculated_3d'][1],raw['coordinates']['calculated_3d'][2]],raw['confidence'],raw['class'],target_type) )
         #检测并删除过时坐标
         for target in self.targets:
             if target.updated_flag==0:
@@ -80,25 +84,39 @@ class CoordinateListener(Node):
                 target.continual_miss=0
         #确定当前追踪目标
         index_target=0
-        min_preference=0
-        if self.targets is not None:
-            for index, target in enumerate(self.targets):
-                if target.class_name == "d":
-                    target.type = "destination"
-                else:
-                    target.type = "can"
-                if target.preference>min_preference and target.type == self.target_type[self.infetch]:
-                    index_target=index
-                    min_preference=target.preference
+        min_target_preference=0
+        index_destination=0
+        min_destination_preference=0
+
+        for index, target in enumerate(self.targets):
+            if target.type == 'can' and target.preference>min_target_preference:
+                index_target=index
+                min_target_preference=target.preference
+            if target.type == 'destination' and target.preference>min_destination_preference:
+                index_destination-index
+                min_destination_preference=target.preference
+
+        if min_target_preference != 0:  
             self.targets[index_target].aimed=True
             self.current_target=self.targets[index_target]
         else:
-            self.current_target=Target([10,0,1],0)
-        self.get_logger().info('Aimed target: %s' % self.current_target.filted_position)
+            self.current_target=Target([10,0,1],0,'','')
+
+        if min_destination_preference !=0:
+            self.targets[index_target].aimed=True
+            self.current_destination=self.targets[index_target]
+        else:
+            self.current_destination=Target([10,0,1],0,'','')
+
+        
+        self.get_logger().info(f'Aimed target: {self.current_target.filted_position} Aimed destination: {self.current_destination.filted_position}')
         arget = json.dumps({
-                "x": self.current_target.filted_position[0],  
+                "x": self.current_target.filted_position[0],
                 "y": self.current_target.filted_position[1],
                 "z": self.current_target.filted_position[2],
+                "xt": self.current_destination.filted_position[0],
+                "yt": self.current_destination.filted_position[1],
+                "zt": self.current_destination.filted_position[2],
             })
         self.publisher_coordinate.publish(String(data=arget))
 
