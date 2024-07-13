@@ -60,10 +60,10 @@ class CoordinateListener(Node):
             self.distance_ref=160
         elif self.mode=='GoDes':
             self.current_location=self.destination_location
-            self.distance_ref=300
+            self.distance_ref=200
         elif self.mode=='Back':
             self.current_location=self.destination_location
-            self.distance_ref=500
+            self.distance_ref=600
         else:
             self.current_location=[1.0,0.0,10.0]
 
@@ -71,16 +71,16 @@ class CoordinateListener(Node):
         y=self.current_location[1]
         z=self.current_location[2]
         # self.distance = (x**2+y**2+z**2)**0.5
-        self.get_logger().info(f"{x},{y},{z}")
+        # self.get_logger().info(f"{x},{y},{z}")
         self.plan_and_publish_velocity([x,z])
         self.switchMode()
 
     def refresh(self):
-        self.dis_err = 1000
+        self.dis_err = 10000
         self.task_finish=80
     
     def switchMode(self):
-        self.get_logger().warning(f"Mode: {self.mode},Task: {self.task_finish}")
+        self.get_logger().warning(f"\n\nMode: {self.mode},Task: {self.task_finish},Err: {self.dis_err}\n")
         if self.mode=='SearchCan':
             if (self.dis_err <20):
                 self.mode='GetCan'
@@ -107,7 +107,7 @@ class CoordinateListener(Node):
             self.task_finish=self.task_finish-1
         elif self.mode=='Back':
             if (self.dis_err <20):
-                self.mode='PutCan'
+                self.mode='SearchCan'
                 self.refresh()
                 return
            
@@ -138,7 +138,7 @@ class CoordinateListener(Node):
         if self.fitch_flag<0:
             self.fitch_flag=0
         velocity = [vz,-vx, -angular_vel,self.fitch_flag]
-        self.get_logger().info(f"\n\n{self.fitch_flag},{abs(target_location[0]-1.0)+abs(target_location[1]-10.0)}\n\n")
+        # self.get_logger().info(f"\n\n{self.fitch_flag},{self.dis_err}\n\n")
         if abs(target_location[0]-10.0)+abs(target_location[1]-1.0)<0.0001:
             velocity = [0.0,0.0, -0.15,self.fitch_flag]
         elif abs(target_location[0]-1.0)+abs(target_location[1]-10.0)<0.0001:
