@@ -39,10 +39,10 @@ class SocketToROSPublisher(Node):
                 else:
                     # 在这里处理超时逻辑，例如打印日志
                     self.get_logger().info("No connections in the last 2.5 seconds...")
-                    # msg = String()
+                    msg = String()
                     # 发布u{'class': 'A', 'confidence': 0, 'coordinates': {'center': [0, 0],'calculated_3d': [10.0, 0.0, 1.0]}}
-                    # msg.data = json.dumps([{'class': 'A', 'confidence': 0, 'coordinates': {'center': [0, 0],'calculated_3d': [10.0, 0.0, 1.0]}}])
-                    # self.publisher_.publish(msg)
+                    msg.data = json.dumps([{'class': 'A', 'confidence': 0, 'coordinates': {'center': [0, 0],'calculated_3d': [10.0, 0.0, 1.0]}}])
+                    self.publisher_.publish(msg)
 
     def handle_client(self, conn):
         with conn:
